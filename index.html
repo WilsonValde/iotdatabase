@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Potenciómetro – Tiempo real</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+<style>
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px}
+  .card{border:1px solid #ddd;border-radius:14px;padding:16px;margin-bottom:14px}
+</style>
+</head>
+<body>
+  <h2>Potenciómetro – Monitor SQL</h2>
+
+  <div class="card">
+    <div>Valor actual: <b id="val">—</b> V (<span id="raw">—</span>)</div>
+    <div id="ts" style="color:#666;font-size:12px">—</div>
+  </div>
+
+  <div class="card">
+    <h3>Últimos 5 minutos</h3>
+    <canvas id="c" height="120"></canvas>
+  </div>
+
+<script>
+const API_BASE = "."; // mismo host/carpeta
+
+const ctx = document.getElementById('c').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: { datasets: [{label:'Voltaje (V)', data:[], borderColor:'#1976d2', pointRadius:0, borderWidth:2}] },
+  options: {
+    animation:false, parsing:false, normalized:true, maintainAspectRatio:false,
+    scales:{ x:{type:'time', time:{unit:'second'}}, y:{beginAtZero:false} },
+    plugins:{ legend:{display:true} }
+  }
+});
+
+async function loadHistory(){
+  const r = await fetch(`${API_BASE}/history.php?minutes=5`);
+  const arr = await r.json();
+  chart.data.datasets[0].data = arr.map(o => ({x:new Date(o.ts), y:+o.volts}));
+  chart.update();
+}
+async function loadLatest(push=true){
+  const r = await fetch(`${API_BASE}/latest.php`);
+  const d = await r.json();
+  if(!d) return;
+  document.getElementById('val').textContent = (+d.volts).toFixed(3);
+  document.getElementById('raw').textContent = d.raw;
+  document.getElementById('ts').textContent  = new Date(d.ts).toLocaleString();
+  if(push){
+    chart.data.datasets[0].data.push({x:new Date(d.ts), y:+d.volts});
+    const min = Date.now()-5*60*1000;
+    chart.data.datasets[0].data = chart.data.datasets[0].data.filter(p=>+p.x>=min);
+    chart.update('none');
+  }
+}
+
+(async()=>{
+  await loadHistory();
+  await loadLatest(false);
+  setInterval(loadLatest, 1000);   // 1 Hz
+  setInterval(loadHistory, 10000); // corregir deriva cada 10 s
+})();
+</script>
+</body>
+</html>
